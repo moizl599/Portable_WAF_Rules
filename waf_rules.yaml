@@ -1,0 +1,258 @@
+# =============================================================================
+# WAF Detection Rules — Portable Definition File
+# =============================================================================
+# Language-agnostic rule definitions for HTTP/IIS log analysis.
+# 13 rules across three severity tiers mapped to OWASP Core Rule Set categories.
+#
+# HOW TO USE:
+#   1. Parse this YAML in any language (Python, Go, Node, C#, etc.)
+#   2. URL-decode + lowercase the URI and query string before matching
+#   3. For regex rules: match type is "regex", apply the pattern to the target field(s)
+#   4. For list rules: match type is "list", check if the field value is in the list
+#   5. For threshold rules: match type is "threshold", compare the field against the value
+#
+# FIELDS REFERENCED:
+#   uri          — request URI path (e.g. /api/users)
+#   query        — query string without leading ? (e.g. id=1&name=test)
+#   method       — HTTP method (GET, POST, etc.)
+#   user_agent   — User-Agent header value
+#   status       — HTTP response status code
+#   response_bytes — response body size in bytes
+#   time_taken_ms  — server processing time in milliseconds
+#
+# URL DECODING:
+#   IIS logs store spaces as + and special characters as %XX.
+#   Before matching regex/list rules against uri or query, decode:
+#     1. Replace + with space
+#     2. Decode %XX sequences
+#     3. Lowercase the result (for case-insensitive matching)
+#   Threshold and list rules against method/user_agent use raw values.
+#
+# Repository: https://github.com/moizl599/Portable_WAF_Rules
+# License: MIT
+# =============================================================================
+
+version: "1.0"
+
+defaults:
+  min_ua_length: 70
+  max_response_bytes: 10000000
+  slow_request_ms: 30000
+
+rules:
+
+  # ===========================================================================
+  # HIGH SEVERITY
+  # ===========================================================================
+
+  - id: WAF-1001
+    severity: HIGH
+    title: "Known webshell filename in URI"
+    description: >
+      Request URI contains a filename associated with web shells
+      (shell.aspx, c99.php, jspwebshell.jsp, reGeorg tunnel, etc.)
+    owasp_crs: "CRS 932"
+    match_type: regex
+    target: [uri]
+    pattern: >-
+      (?i)(?:web)?shell\.aspx|cmd\.aspx|cmdshell|c99\.php|r57\.php|b374k|
+      chopper|china_chopper|aspxspy|antsword|godzilla|behinder|jspwebshell|
+      jspspy|devilzshell|wso\.php|alfa\.php|mini[\-_]?shell|phpspy|lamashell|
+      filesman|leafmailer|adminer\.php|phpinfo\.php|eval-stdin\.php|
+      tunnel\.aspx|regeorg|neo-regeorg|chisel|plink
+
+  - id: WAF-1002
+    severity: HIGH
+    title: "SQL injection payload detected"
+    description: >
+      URI or query string contains SQL injection patterns
+      (UNION SELECT, WAITFOR DELAY, xp_cmdshell, boolean-based, etc.)
+    owasp_crs: "CRS 942"
+    match_type: regex
+    target: [query, uri]
+    pattern: >-
+      (?i)(?:union[\s+]+(?:all[\s+]+)?select|
+      select[\s+]+.*[\s+]+from[\s+]+information_schema|
+      waitfor[\s+]+delay|
+      exec[\s+]+(?:master\.\.)?xp_cmdshell|
+      benchmark\s*\(|
+      (?:and|or)[\s+]+[\d]+[\s+]*=[\s+]*[\d]+|
+      (?:and|or)[\s+]+['\x22][\s+]*=[\s+]*['\x22]|
+      having[\s+]+\d+[\s+]*=[\s+]*\d+|
+      order[\s+]+by[\s+]+\d{2,}|
+      0x5175616c79735f53514c49|
+      convert\s*\(\s*int|
+      cast\s*\([\s\S]*?\s+as\s+|
+      declare[\s+]+@|
+      ';?\s*(?:drop|alter|create|truncate|insert|update|delete)[\s+])
+
+  - id: WAF-1003
+    severity: HIGH
+    title: "OS command injection pattern"
+    description: >
+      URI or query string contains OS command injection sequences
+      (pipe, semicolon, backtick, or $() followed by system commands)
+    owasp_crs: "CRS 932"
+    match_type: regex
+    target: [query, uri]
+    pattern: >-
+      (?i)(?:;|\||`|&|\$\()\s*(?:cat|ls|dir|type|net|whoami|id|uname|
+      ping|nslookup|curl|wget|nc|ncat|bash|sh|cmd|powershell|certutil|
+      bitsadmin|regsvr32|mshta|rundll32)
+
+  - id: WAF-1004
+    severity: HIGH
+    title: "Cross-site scripting payload detected"
+    description: >
+      URI or query contains XSS patterns (<script>, javascript:,
+      event handlers, document.cookie, eval(), etc.)
+    owasp_crs: "CRS 941"
+    match_type: regex
+    target: [query, uri]
+    pattern: >-
+      (?i)<\s*script|javascript\s*:|
+      on(?:error|load|click|mouseover|focus)\s*=|
+      <\s*img[^>]+onerror|<\s*svg[^>]+onload|<\s*iframe|
+      document\.(?:cookie|write|location)|
+      alert\s*\(|prompt\s*\(|confirm\s*\(|
+      eval\s*\(|expression\s*\(|fromcharcode
+
+  - id: WAF-1005
+    severity: HIGH
+    title: "Directory traversal sequence in request"
+    description: >
+      URI or query string contains ../ or ..\ sequences
+      attempting path traversal
+    owasp_crs: "CRS 930"
+    match_type: regex
+    target: [uri, query]
+    pattern: >-
+      \.\.[/\\]
+
+  # ===========================================================================
+  # MEDIUM SEVERITY
+  # ===========================================================================
+
+  - id: WAF-2001
+    severity: MEDIUM
+    title: "Known vulnerability scanner user agent"
+    description: >
+      User-Agent header matches a known security scanner or
+      automated attack tool
+    owasp_crs: "CRS 913"
+    match_type: regex
+    target: [user_agent]
+    pattern: >-
+      (?i)palo.alto.networks|cortex.xpanse|nmap|nikto|sqlmap|dirbuster|
+      dirb[\s/]|gobuster|nuclei|masscan|zgrab|wpscan|joomscan|acunetix|
+      nessus|openvas|qualys|rapid7|burpsuite|burp.suite|owasp.zap|
+      zaproxy|arachni|w3af|skipfish|whatweb|python-httpx|python-requests|
+      python-urllib|go-http-client|java/\d|libwww-perl|curl/\d|wget/\d|
+      httpie|censys|shodan|binaryedge|crtsh|securitytrails
+
+  - id: WAF-2002
+    severity: MEDIUM
+    title: "Request for sensitive or configuration file"
+    description: >
+      URI targets files that should not be publicly accessible
+      (.env, web.config, .git/, .bak, .sql, etc.)
+    owasp_crs: "CRS 930"
+    match_type: regex
+    target: [uri]
+    pattern: >-
+      (?i)(?:web\.config|\.env|\.git(?:/|$)|\.svn(?:/|$)|wp-config\.php|
+      config\.php|\.htaccess|\.htpasswd|\.aws/credentials|\.ssh/|id_rsa|
+      \.bash_history|passwd$|shadow$|boot\.ini|win\.ini|phpMyAdmin|
+      phpmyadmin|/admin/|/manager/html|\.bak$|\.old$|\.orig$|\.save$|
+      \.swp$|\.tmp$|\.sql$|\.dump$|\.tar\.gz$|\.zip$|crossdomain\.xml|
+      clientaccesspolicy\.xml|WEB-INF|META-INF)
+
+  - id: WAF-2003
+    severity: MEDIUM
+    title: "Uncommon or dangerous HTTP method"
+    description: >
+      HTTP method is PUT, DELETE, TRACE, CONNECT, or a WebDAV method
+    owasp_crs: "CRS 911"
+    match_type: list
+    target: [method]
+    note: "Compare method uppercase against this list"
+    values:
+      - PUT
+      - DELETE
+      - TRACE
+      - CONNECT
+      - PATCH
+      - PROPFIND
+      - PROPPATCH
+      - MKCOL
+      - COPY
+      - MOVE
+      - LOCK
+      - UNLOCK
+
+  - id: WAF-2004
+    severity: MEDIUM
+    title: "Request for non-IIS file extension"
+    description: >
+      URI targets a file extension not native to IIS
+      (.php, .jsp, .cgi, .action, .do, etc.)
+    owasp_crs: "CRS 920"
+    match_type: regex
+    target: [uri]
+    pattern: >-
+      (?i)\.(?:php|jsp|jspx|do|action|cgi|pl|py|rb|cfm|jsf|faces|
+      struts|yaws|lua)\d*(?:\?|$)
+
+  # ===========================================================================
+  # LOW SEVERITY
+  # ===========================================================================
+
+  - id: WAF-3001
+    severity: LOW
+    title: "Short User-Agent string"
+    description: >
+      User-Agent is shorter than the configured minimum.
+      Legitimate browsers typically send 70+ character UA strings.
+    owasp_crs: ~
+    match_type: threshold
+    target: [user_agent]
+    note: >
+      Decode + to space in User-Agent (no lowercasing needed).
+      Flag if UA is non-empty AND length < defaults.min_ua_length.
+    condition: "length < min_ua_length AND length > 0"
+    default_threshold: 70
+
+  - id: WAF-3002
+    severity: LOW
+    title: "Missing or empty User-Agent header"
+    description: >
+      User-Agent is empty or '-'. Legitimate browsers always send
+      a User-Agent.
+    owasp_crs: ~
+    match_type: threshold
+    target: [user_agent]
+    condition: "value is empty OR value == '-'"
+
+  - id: WAF-3003
+    severity: LOW
+    title: "Large response body"
+    description: >
+      Server sent an unusually large response.
+      May indicate data exfiltration.
+    owasp_crs: ~
+    match_type: threshold
+    target: [response_bytes]
+    condition: "value > max_response_bytes"
+    default_threshold: 10000000
+
+  - id: WAF-3004
+    severity: LOW
+    title: "Slow request processing"
+    description: >
+      Server took an unusually long time. May indicate time-based
+      SQL injection or resource exhaustion.
+    owasp_crs: ~
+    match_type: threshold
+    target: [time_taken_ms]
+    condition: "value > slow_request_ms"
+    default_threshold: 30000

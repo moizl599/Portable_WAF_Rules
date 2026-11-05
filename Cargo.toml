@@ -1,0 +1,19 @@
+[package]
+name = "waf-rules"
+version = "0.1.0"
+edition = "2021"
+description = "Portable WAF detection rules for IIS/HTTP log analysis. 13 rules covering OWASP CRS categories: webshell probes, SQLi, command injection, XSS, path traversal, scanner detection, sensitive file access, and more."
+license = "MIT"
+repository = "https://github.com/moizl599/waf-rules"
+readme = "README.md"
+keywords = ["waf", "security", "iis", "owasp", "detection"]
+categories = ["web-programming", "parser-implementations"]
+
+[dependencies]
+regex = "1.10"
+urlencoding = "2.1"
+serde = { version = "1.0", features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde"]

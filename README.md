@@ -28,7 +28,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-waf-rules = { git = "https://github.com/moizl599/waf-rules" }
+waf-rules = { git = "https://github.com/moizl599/Portable_WAF_Rules" }
 ```
 
 Basic usage:
